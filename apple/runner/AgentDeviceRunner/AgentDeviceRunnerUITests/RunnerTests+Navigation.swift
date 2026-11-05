@@ -46,7 +46,7 @@ extension RunnerTests {
     return .performed
 #else
     let rejectedQueriesBefore = navigationRejectedQueryCount()
-    let buttons = try elementQueries(app: app, matching: .navigationBar)
+    let buttons = try elementSearch(app: app).queries(matching: .navigationBar)
       .flatMap { $0.buttons.allElementsBoundByIndex }
     if let back = buttons.first(where: { $0.isHittable }) {
       // `isHittable` promises a hittable point, not a hittable center: a bar button partly under an
@@ -116,7 +116,7 @@ extension RunnerTests {
   private func topNavigationBackFrame(app: XCUIApplication) throws -> CGRect? {
 #if os(iOS)
     let window = try onScreenWindowFrame(app: app)
-    let candidates = try elementQueries(app: app, matching: .button).flatMap {
+    let candidates = try elementSearch(app: app).queries(matching: .button).flatMap {
       $0.matching(Self.navigationBackPredicate()).allElementsBoundByIndex
     }.compactMap {
       element -> (frame: CGRect, rank: Int)? in

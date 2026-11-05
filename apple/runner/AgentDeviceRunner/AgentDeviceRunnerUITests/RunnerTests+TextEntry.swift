@@ -610,7 +610,7 @@ extension RunnerTests {
     guard identity.isDistinguishable else {
       return nil
     }
-    let queries = try elementQueries(app: app, matching: identity.elementType).map {
+    let queries = try elementSearch(app: app).queries(matching: identity.elementType).map {
       $0.matching(identifier: identity.identifier)
     }
     return (queries.count == 1 ? queries.first : queries.first { $0.count > 0 })?.element

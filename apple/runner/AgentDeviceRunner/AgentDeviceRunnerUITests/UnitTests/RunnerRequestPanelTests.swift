@@ -502,6 +502,34 @@ extension RunnerTests {
     }
   }
 
+  /// One text-input lookup walks the lit windows once, however many input types it queries.
+  @MainActor
+  func testTextInputProbeWalksTheLitWindowsOnce() throws {
+    try withLitPanelBookingProbe { _ in
+      LitPanelBookingProbe.windowFrame = CGRect(x: 0, y: 0, width: 669, height: 951)
+      setRequestLitPanel(from: try runnerCommandFixture(
+        #"{"command":"type","litPanel":{"displayId":3,"widthPt":669,"heightPt":951}}"#
+      ))
+      _ = try probeTextInputs(app: app, point: CGPoint(x: 10, y: 10), contentTranslation: .none)
+      XCTAssertEqual(LitPanelBookingProbe.windowListReads, 1)
+    }
+  }
+
+  /// A content-vector read on a lit-panel request that nothing booked yet books the request's
+  /// window and answers its origin, instead of refusing for want of an earlier booking.
+  @MainActor
+  func testUnbookedLitPanelContentTranslationBooksTheRequestWindow() throws {
+    try withLitPanelBookingProbe { _ in
+      LitPanelBookingProbe.windowFrame = CGRect(x: 0, y: 80, width: 669, height: 871)
+      setRequestLitPanel(from: try runnerCommandFixture(
+        #"{"command":"type","litPanel":{"displayId":3,"widthPt":669,"heightPt":951}}"#
+      ))
+      guard case .known(let vector) = liveContentTranslation(app: app) else { return XCTFail("no vector") }
+      XCTAssertEqual(vector, CGSize(width: 0, height: 80))
+      XCTAssertNotNil(litPanelState.surface)
+    }
+  }
+
   @MainActor
   func testFailedLitPanelBookingRefusesEveryReferenceFrameConsumer() throws {
     try withLitPanelBookingProbe { _ in
@@ -741,7 +769,7 @@ extension RunnerTests {
   /// Launches the app and names its own window's display and box as the lit panel: the
   /// `litPanel` JSON member, and the window frame.
   @MainActor
-  private func launchAppOnTheLitPanel() -> (panel: String, frame: CGRect) {
+  func launchAppOnTheLitPanel() -> (panel: String, frame: CGRect) {
     app.launch()
     mainOwned.app = app
     let window = app.windows.firstMatch
@@ -752,7 +780,7 @@ extension RunnerTests {
   }
 
   @MainActor
-  private func tearDownLitPanelApp() {
+  func tearDownLitPanelApp() {
     litPanelWindowWalkIssueForTesting = false
     setRequestLitPanel(from: try! runnerCommandFixture(#"{"command":"tap"}"#))
     invalidateCachedTarget(reason: "unit_test_cleanup")

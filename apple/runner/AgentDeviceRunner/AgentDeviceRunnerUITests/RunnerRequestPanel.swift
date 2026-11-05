@@ -92,16 +92,28 @@ extension RunnerTests {
     return surface
   }
 
-  /// The roots of every element read: the app, or the windows proven on the lit display. A walk that
-  /// cannot read the list, or that records an issue (#2995), throws `APP_SCREEN_UNRESOLVED`.
-  func elementSearchRoots(root: XCUIElement, litDisplayID: UInt?) throws -> [XCUIElement] {
+  /// The search every element read of the current request runs under (ADR 0025).
+  func elementSearch(app: XCUIApplication) -> ElementSearch {
+    ElementSearch(runner: self, root: app, litDisplayID: requestLitPanel?.displayID)
+  }
+}
+
+/// The roots of every element read: the root, or the windows proven on the lit display. Built per
+/// read and never stored, so one read walks the window list once for every type it queries.
+struct ElementSearch {
+  let runner: RunnerTests
+  let root: XCUIElement
+  let litDisplayID: UInt?
+
+  /// A walk that cannot read the list, or that records an issue (#2995), throws `APP_SCREEN_UNRESOLVED`.
+  func roots() throws -> [XCUIElement] {
     guard let litDisplayID else { return [root] }
     var windows: [XCUIElement]?
-    let walk = holdingRecordedIssues {
+    let walk = runner.holdingRecordedIssues {
       windows = RunnerCopyLitPanelWindows(root, litDisplayID)?.compactMap { $0 as? XCUIElement }
 #if AGENT_DEVICE_RUNNER_UNIT_TESTS
-      if litPanelWindowWalkIssueForTesting {
-        record(XCTIssue(type: .assertionFailure, compactDescription: "Window vanished during the lit-panel walk"))
+      if runner.litPanelWindowWalkIssueForTesting {
+        runner.record(XCTIssue(type: .assertionFailure, compactDescription: "Window vanished during the lit-panel walk"))
       }
 #endif
     }
@@ -118,15 +130,8 @@ extension RunnerTests {
     return windows
   }
 
-  func elementQueries(app: XCUIApplication, matching type: XCUIElement.ElementType) throws -> [XCUIElementQuery] {
-    try elementQueries(root: app, matching: type, litDisplayID: requestLitPanel?.displayID)
-  }
-
-  func elementQueries(
-    root: XCUIElement,
-    matching type: XCUIElement.ElementType,
-    litDisplayID: UInt?
-  ) throws -> [XCUIElementQuery] {
-    try elementSearchRoots(root: root, litDisplayID: litDisplayID).map { $0.descendants(matching: type) }
+  func queries(matching types: XCUIElement.ElementType...) throws -> [XCUIElementQuery] {
+    let roots = try roots()
+    return types.flatMap { type in roots.map { $0.descendants(matching: type) } }
   }
 }

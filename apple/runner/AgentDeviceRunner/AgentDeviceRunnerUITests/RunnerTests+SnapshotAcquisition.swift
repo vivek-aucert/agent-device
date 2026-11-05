@@ -359,11 +359,9 @@ extension RunnerTests {
       return true
     }
     guard canStartQuery() else { return nil }
-    let queries = try elementQueries(
-      root: context.queryRoot,
-      matching: .any,
-      litDisplayID: context.litPanelSurface?.displayID
-    )
+    let queries = try ElementSearch(
+      runner: self, root: context.queryRoot, litDisplayID: context.litPanelSurface?.displayID
+    ).queries(matching: .any)
     var matches: [XCUIElement] = []
     for query in queries {
       guard canStartQuery() else { return nil }

@@ -185,7 +185,7 @@ extension RunnerTests {
 
   func findElement(app: XCUIApplication, text: String) throws -> XCUIElement? {
     let predicate = NSPredicate(format: "label CONTAINS[c] %@ OR identifier CONTAINS[c] %@ OR value CONTAINS[c] %@", text, text, text)
-    return try elementQueries(app: app, matching: .any)
+    return try elementSearch(app: app).queries(matching: .any)
       .lazy
       .map { $0.matching(predicate).firstMatch }
       .first { $0.exists }
@@ -217,7 +217,7 @@ extension RunnerTests {
       return SelectorElementMatch(element: nil, isAmbiguous: false, usedNonHittableFallback: false)
     }
 
-    let matches = try elementQueries(app: app, matching: .any)
+    let matches = try elementSearch(app: app).queries(matching: .any)
       .flatMap { $0.matching(predicate).allElementsBoundByIndex }
       .filter(\.exists)
     let facts = try matches.map { element in
@@ -392,7 +392,7 @@ extension RunnerTests {
       }
     }
 
-    let candidates = try elementQueries(app: app, matching: .any)
+    let candidates = try elementSearch(app: app).queries(matching: .any)
       .flatMap { $0.allElementsBoundByIndex }
       .filter { element in
         element.exists && !element.frame.isEmpty && element.frame.contains(point)
