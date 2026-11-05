@@ -14,10 +14,11 @@ export async function cleanupVerifiedAndroidEvidence(
 ): Promise<CleanupOutcome> {
   try {
     const pendingPath = evidence.pendingRemotePath;
-    await stopOwnedChunks(transport, [
-      ...evidence.chunks,
-      ...(await pendingWriterChunks(transport, evidence)),
-    ]);
+    await stopOwnedChunks(
+      transport,
+      [...evidence.chunks, ...(await pendingWriterChunks(transport, evidence))],
+      'require-unclaimed-artifact',
+    );
     await cleanupChunks(transport, evidence.chunks);
     if (pendingPath !== undefined && !(await transport.remove(pendingPath)))
       throw new Error(`failed to remove Android recording artifact: ${pendingPath}`);

@@ -91,19 +91,30 @@ function validProcessIdentity(
 }
 
 /**
+ * What a stop does with proof that the recorded recorder terminated while Android kept its numeric
+ * pid. `refuse` is the export rule: an export cannot name the video a recorder it cannot identify
+ * wrote. `require-unclaimed-artifact` is the exact-evidence cleanup rule: the recorder is proven gone,
+ * so its artifact may be deleted once a conclusive scan finds no writer for its path. Both refuse to
+ * signal the replacement process; the transport only ever kills a pid whose identity is the recorded
+ * recorder, so a reassigned pid is never a stop target.
+ */
+export type AndroidRecordingReassignment = 'refuse' | 'require-unclaimed-artifact';
+
+/**
  * Resolves whether the active (last) chunk's recorder had already exited, i.e. the video ends before
  * record stop. Earlier chunks always end before stop because rotation replaced them.
  */
 export async function stopOwnedChunks(
   transport: Transport,
   chunks: readonly NativeChunk[],
+  onReassignment: AndroidRecordingReassignment = 'refuse',
 ): Promise<boolean> {
   const active = chunks.at(-1);
   let activeAlreadyExited = false;
   let failure: unknown;
   for (const chunk of [...chunks].reverse()) {
     try {
-      const alreadyExited = await stopChunk(transport, chunk);
+      const alreadyExited = await stopChunk(transport, chunk, onReassignment);
       if (chunk === active) activeAlreadyExited = alreadyExited;
     } catch (error) {
       failure ??= error;
@@ -218,6 +229,7 @@ async function rollbackStartedProcess(
 export async function stopChunk(
   transport: Transport,
   chunk: NativeChunk | undefined,
+  onReassignment: AndroidRecordingReassignment = 'refuse',
 ): Promise<boolean> {
   if (!chunk) return false;
   const processIdentity = {
@@ -227,14 +239,45 @@ export async function stopChunk(
   };
   const graceful = await transport.stop(processIdentity);
   if (graceful === 'already-missing') return true;
-  if (graceful === 'ownership-lost')
+  if (graceful === 'ownership-lost') {
+    await acceptPidReassignment(transport, chunk, onReassignment);
+    return true;
+  }
+  const poll = await waitForStopped(transport, processIdentity, onReassignment);
+  if (poll === 'reassigned') {
+    await acceptPidReassignment(transport, chunk, onReassignment);
+    return false;
+  }
+  if (poll === 'gone') return false;
+  const forced = await transport.stop(processIdentity, { force: true });
+  if (forced === 'stopped' || forced === 'already-missing') return false;
+  if (forced === 'ownership-lost' && onReassignment === 'require-unclaimed-artifact') {
+    await acceptPidReassignment(transport, chunk, onReassignment);
+    return false;
+  }
+  throw new Error(`failed to stop Android screenrecord pid ${chunk.remotePid}`);
+}
+
+/**
+ * Applies what a caller decided once the device proved the recorded recorder terminated while Android
+ * kept its numeric pid. The replacement process is never signalled: a stop only kills a pid whose
+ * readable identity is the recorded recorder, so a reassigned pid never receives a signal here.
+ */
+async function acceptPidReassignment(
+  transport: Transport,
+  chunk: NativeChunk,
+  onReassignment: AndroidRecordingReassignment,
+): Promise<void> {
+  if (onReassignment === 'refuse')
     throw new Error(
       `Android screenrecord ownership could not be confirmed for pid ${chunk.remotePid}`,
     );
-  if (await waitForStopped(transport, processIdentity)) return false;
-  const forced = await transport.stop(processIdentity, { force: true });
-  if (forced === 'stopped' || forced === 'already-missing') return false;
-  throw new Error(`failed to stop Android screenrecord pid ${chunk.remotePid}`);
+  const writers = await transport.probeRunningWriters(chunk.remotePath);
+  if (!writers.conclusive)
+    throw new Error(`cannot list every recorder writing Android artifact: ${chunk.remotePath}`);
+  const writer = writers.writers.at(0);
+  if (writer)
+    throw new Error(`Android artifact is still written by pid ${writer.pid}: ${chunk.remotePath}`);
 }
 
 async function pullPlayableChunk(
@@ -250,21 +293,29 @@ async function pullPlayableChunk(
   throw new Error('failed to retrieve playable Android recording');
 }
 
+/**
+ * Polls until the process named by `processIdentity` is gone. A pid whose readable identity proves the
+ * recorded recorder terminated is refused under `refuse` and reported under `require-unclaimed-artifact`,
+ * which decides from a path-writer scan.
+ */
 async function waitForStopped(
   transport: Transport,
   processIdentity: Awaited<ReturnType<Transport['start']>>['process'],
-): Promise<boolean> {
+  onReassignment: AndroidRecordingReassignment,
+): Promise<'gone' | 'reassigned' | 'timeout'> {
   for (let elapsed = 0; elapsed <= GRACEFUL_STOP_TIMEOUT_MS; elapsed += STOP_POLL_INTERVAL_MS) {
     const state = await transport.inspect(processIdentity);
-    if (state === 'missing') return true;
+    if (state === 'missing') return 'gone';
     if (provesAndroidScreenRecordTermination(state)) {
-      throw new Error(
-        `Android screenrecord ownership could not be confirmed for pid ${processIdentity.pid}`,
-      );
+      if (onReassignment === 'refuse')
+        throw new Error(
+          `Android screenrecord ownership could not be confirmed for pid ${processIdentity.pid}`,
+        );
+      return 'reassigned';
     }
     if (elapsed < GRACEFUL_STOP_TIMEOUT_MS) await delay(STOP_POLL_INTERVAL_MS);
   }
-  return false;
+  return 'timeout';
 }
 
 function delay(ms: number): Promise<void> {
