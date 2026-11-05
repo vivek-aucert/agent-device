@@ -73,9 +73,12 @@ test('cleans evidence whose pid was reassigned once a conclusive scan finds no w
   const removed: string[] = [];
   const markers: string[] = [];
   const host = recordingHost({
-    stop: async ({ pid, force }: { pid: string; force?: boolean }) => {
-      stops.push({ pid, force });
-      return 'ownership-lost' as const;
+    stop: async (
+      { pid }: { pid: string },
+      options?: Readonly<{ force?: boolean }>,
+    ): Promise<'ownership-lost'> => {
+      stops.push({ pid, force: options?.force });
+      return 'ownership-lost';
     },
     findRunning: async () => ({ writers: [], conclusive: true }),
     remove: async (remotePath: string) => {
@@ -103,9 +106,12 @@ test('cleans evidence whose pid was reassigned once a conclusive scan finds no w
 test('cleans evidence whose pid is reassigned while its graceful stop is polled', async () => {
   const stops: Array<{ pid: string; force?: boolean }> = [];
   const host = recordingHost({
-    stop: async ({ pid, force }: { pid: string; force?: boolean }) => {
-      stops.push({ pid, force });
-      return 'stopped' as const;
+    stop: async (
+      { pid }: { pid: string },
+      options?: Readonly<{ force?: boolean }>,
+    ): Promise<'stopped'> => {
+      stops.push({ pid, force: options?.force });
+      return 'stopped';
     },
     inspect: async () => 'ownership-lost' as const,
     findRunning: async () => ({ writers: [], conclusive: true }),
@@ -162,9 +168,12 @@ test('stops a recorder that still owns its pid without scanning the artifact pat
   const stops: Array<{ pid: string; force?: boolean }> = [];
   let scans = 0;
   const host = recordingHost({
-    stop: async ({ pid, force }: { pid: string; force?: boolean }) => {
-      stops.push({ pid, force });
-      return 'stopped' as const;
+    stop: async (
+      { pid }: { pid: string },
+      options?: Readonly<{ force?: boolean }>,
+    ): Promise<'stopped'> => {
+      stops.push({ pid, force: options?.force });
+      return 'stopped';
     },
     inspect: async () => 'missing' as const,
     findRunning: async () => {
