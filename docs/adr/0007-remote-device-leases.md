@@ -329,25 +329,28 @@ The host sets the tenant, session isolation, and lease of that client on every r
 
 ## Device spec
 
-A proxy lease can name a device spec beside platform, target, and device: `osVersion`, `imageTag`, `deviceMode`, and `physical` on `agent_device.lease.allocate`.
+A proxy lease can name a device spec beside platform, target, and device: `osVersion`, `imageTag`, `deviceMode`, `deviceBaseline`, and `physical` on `agent_device.lease.allocate`.
 Only a backend in front of the daemon, such as simlock, can pick a device by these keys.
 A daemon cannot pick by them.
 If a daemon ignored them, a request would run on a device that it did not ask for.
-Thus, a daemon refuses every request that names a non-blank `osVersion`, `imageTag` or `deviceMode`, or `physical: true`, before admission and before a lease is recorded.
+Thus, a daemon refuses every request that names a non-blank `osVersion`, `imageTag`, `deviceMode` or `deviceBaseline`, or `physical: true`, before admission and before a lease is recorded.
 The refusal is `UNSUPPORTED_OPERATION` with `details.reason: 'device-spec-unsupported'` and `details.keys`.
 This applies to a local daemon and to a daemon behind `agent-device proxy`.
-A blank `osVersion`, `imageTag` or `deviceMode` and `physical: false` name nothing, so a daemon accepts them.
+A blank `osVersion`, `imageTag`, `deviceMode` or `deviceBaseline` and `physical: false` name nothing, so a daemon accepts them.
 `deviceMode` (`slim` or `full`) chooses how much of an iOS simulator the backend keeps running; the backend validates the value.
+`deviceBaseline` names a saved, prepared device state that the backend restores on the leased device; the backend validates the name.
 A named value is used as given, without trimming.
 A value of another type is refused with `INVALID_ARGS`, `details.reason: 'device-spec-invalid'`, and `details.keys`.
 `readLeaseDeviceSpec` is the one decision on these rules, for CLI flags, the SDK, MCP, and the daemon.
 A remote config file first applies the value rules of every config key: a string must be non-empty, and a boolean also accepts a boolean string such as `"true"`.
-The backend that honours the spec strips the keys before it forwards the allocation, and echoes the granted device on the lease as `lease.device` (`model`, `osVersion`, `imageTag?`, `deviceMode?`, `physical`).
+The backend that honours the spec strips the keys before it forwards the allocation, and echoes the granted device on the lease as `lease.device` (`model`, `osVersion`, `imageTag?`, `deviceMode?`, `baseline?`, `physical`).
 `deviceKey` stays the identity of the lease; `lease.device` is the proof that the spec was understood.
 A backend can report the granted mode as `lease.device.deviceMode`.
 The CLI proxy connection treats a new lease that reports `slim` for a `full` request like a lease without `lease.device`.
 Full is a guarantee and slim is best effort, so `full` granted for a `slim` request is served.
 A lease that reports no mode is accepted, so the proof does not confirm `deviceMode`: a backend that ignores the key and reports no mode grants its default without an error.
+A backend reports a restored baseline as `lease.device.baseline` (`name`, and `version`, a positive integer).
+The CLI proxy connection treats a new lease allocated with `deviceBaseline` whose `baseline.name` is not the requested name like a lease without `lease.device`.
 A backend older than the spec returns a lease without `lease.device`.
 The CLI proxy connection then releases that lease and fails with `UNSUPPORTED_OPERATION` and `details.reason: 'device-spec-unsupported'`.
 `details.released` reports whether the release succeeded.
